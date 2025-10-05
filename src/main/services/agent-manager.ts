@@ -1,4 +1,7 @@
 import { OpenRouterAgentService } from '../../agents/core/openrouter-agent-service';
+import { ClaudeAgentService } from '../../agents/core/claude-agent-service';
+import { DeepAgentService } from './deepagent-service';
+import { PythonBackendManager } from './python-backend-manager';
 import { DatabaseManager, ChatMessage } from './database-manager';
 import { VirtualFileManager } from './virtual-file-manager';
 import type { AgentMessage } from '@shared/types';
@@ -9,12 +12,16 @@ import { BrowserWindow } from 'electron';
  * Handles agent queries, event forwarding, and chat history management
  */
 export class AgentManager {
-  private agentService: OpenRouterAgentService;
+  private agentService: OpenRouterAgentService | ClaudeAgentService | DeepAgentService;
+  private pythonBackend: PythonBackendManager | null = null;
+  private useClaudeSDK: boolean;
+  private useDeepAgents: boolean;
   private databaseManager: DatabaseManager;
   private virtualFileManager: VirtualFileManager;
   private mainWindow: BrowserWindow | null = null;
   private currentProjectId: string | null = null;
   private currentSessionId: string | null = null;
+  private currentProjectPath: string | null = null;
 
   constructor(
     virtualFileManager: VirtualFileManager,
@@ -23,16 +30,66 @@ export class AgentManager {
     this.virtualFileManager = virtualFileManager;
     this.databaseManager = databaseManager;
     
-    // Initialize OpenRouter agent service
-    const serviceOptions: any = {};
-    if (process.env.CLAUDE_MODEL) serviceOptions.model = process.env.CLAUDE_MODEL;
-    if (process.env.CLAUDE_API_KEY) serviceOptions.apiKey = process.env.CLAUDE_API_KEY;
-    if (process.env.CLAUDE_API_BASE_URL) serviceOptions.apiBaseUrl = process.env.CLAUDE_API_BASE_URL;
+    // Check feature flags
+    this.useClaudeSDK = process.env.USE_CLAUDE_SDK === 'true';
+    this.useDeepAgents = process.env.USE_DEEPAGENTS === 'true';
     
-    this.agentService = new OpenRouterAgentService(serviceOptions);
+    // Initialize appropriate service
+    if (this.useDeepAgents) {
+      console.log('🧠 Using DeepAgents Service (RECOMMENDED)');
+      // DeepAgent service will be initialized after Python backend starts
+      this.agentService = new DeepAgentService('');  // Placeholder
+    } else if (this.useClaudeSDK) {
+      console.log('✨ Using Claude SDK Agent Service');
+      this.agentService = new ClaudeAgentService(
+        virtualFileManager,
+        process.cwd()
+      );
+    } else {
+      console.log('Using OpenRouter Agent Service (LEGACY)');
+      const serviceOptions: any = {};
+      if (process.env.CLAUDE_MODEL) serviceOptions.model = process.env.CLAUDE_MODEL;
+      if (process.env.CLAUDE_API_KEY) serviceOptions.apiKey = process.env.CLAUDE_API_KEY;
+      if (process.env.CLAUDE_API_BASE_URL) serviceOptions.apiBaseUrl = process.env.CLAUDE_API_BASE_URL;
+      
+      this.agentService = new OpenRouterAgentService(serviceOptions);
+    }
 
     // Set up event listeners
     this.setupEventListeners();
+  }
+  
+  /**
+   * Initialize DeepAgents backend (call this after constructor)
+   */
+  async initializeDeepAgents(projectPath: string): Promise<void> {
+    if (!this.useDeepAgents) {
+      return;
+    }
+    
+    try {
+      // Start Python backend
+      this.pythonBackend = new PythonBackendManager();
+      await this.pythonBackend.start();
+      
+      // Create DeepAgent service
+      const wsUrl = this.pythonBackend.getWebSocketUrl();
+      this.agentService = new DeepAgentService(wsUrl);
+      
+      // Connect and initialize
+      await (this.agentService as DeepAgentService).connect();
+      await (this.agentService as DeepAgentService).initialize(projectPath);
+      
+      this.currentProjectPath = projectPath;
+      
+      // Re-setup event listeners for DeepAgent
+      this.setupEventListeners();
+      
+      console.log('✅ DeepAgents initialized successfully');
+    } catch (error) {
+      console.error('Failed to initialize DeepAgents:', error);
+      throw error;
+    }
   }
 
   /**
@@ -47,6 +104,29 @@ export class AgentManager {
    */
   setCurrentProject(projectId: string): void {
     this.currentProjectId = projectId;
+  }
+  
+  /**
+   * Set the current project path (for DeepAgents)
+   */
+  async setCurrentProjectPath(projectPath: string): Promise<void> {
+    this.currentProjectPath = projectPath;
+    
+    // If using DeepAgents, update the project
+    if (this.useDeepAgents && this.agentService instanceof DeepAgentService) {
+      try {
+        await this.agentService.changeProject(projectPath);
+      } catch (error) {
+        console.error('Failed to change DeepAgents project:', error);
+      }
+    }
+  }
+  
+  /**
+   * Get the current project path
+   */
+  getCurrentProjectPath(): string | null {
+    return this.currentProjectPath;
   }
   /**
    * Set up event listeners for Claude service
@@ -63,6 +143,15 @@ export class AgentManager {
 
     this.agentService.on('stream-end', (data: any) => {
       this.emitToRenderer('agent:stream-end', data);
+    });
+
+    // Listen for tool calls
+    this.agentService.on('tool-call', (toolCall: any) => {
+      this.emitToRenderer('agent:tool-call', toolCall);
+    });
+
+    this.agentService.on('tool-result', (toolResult: any) => {
+      this.emitToRenderer('agent:tool-result', toolResult);
     });
 
     // Listen for messages
@@ -151,6 +240,17 @@ export class AgentManager {
 
       // Send message to agent
       console.log('Calling agentService.sendMessage');
+      
+      // For DeepAgents, response comes through events, not return value
+      if (this.useDeepAgents) {
+        // DeepAgentService.sendMessage(prompt, threadId)
+        await (this.agentService as DeepAgentService).sendMessage(prompt);
+        console.log('Message sent to DeepAgents (response will come via events)');
+        // Return empty array - actual response comes through stream events
+        return [];
+      }
+      
+      // For other agents (Claude/OpenRouter), await response
       const response = await this.agentService.sendMessage(prompt, {
         maxTokens: 4096
       });
@@ -238,15 +338,24 @@ export class AgentManager {
    */
   async resumeSession(sessionId: string): Promise<void> {
     this.currentSessionId = sessionId;
-    // Resume not implemented for OpenRouter service
+    
+    // Claude SDK supports session resumption
+    if (this.useClaudeSDK && this.agentService instanceof ClaudeAgentService) {
+      console.log('Resuming Claude SDK session:', sessionId);
+      // Session will be resumed automatically in next query
+    }
   }
 
   /**
    * Interrupt active query
    */
   async interrupt(): Promise<void> {
-    // Not implemented for OpenRouter service
-    console.log('Interrupt not supported');
+    if (this.useClaudeSDK && this.agentService instanceof ClaudeAgentService) {
+      console.log('Interrupting Claude SDK query');
+      await this.agentService.stop();
+    } else {
+      console.log('Interrupt not supported for OpenRouter service');
+    }
   }
 
   /**
@@ -300,6 +409,66 @@ export class AgentManager {
    */
   isInitialized(): boolean {
     return this.agentService.isReady();
+  }
+
+  /**
+   * Thread/Session Management
+   */
+  async createThread(projectId: string, name?: string): Promise<any> {
+    const session = await this.databaseManager.createSession(projectId, name);
+    return {
+      id: session.id,
+      name: session.name,
+      projectId: session.projectId,
+      createdAt: session.startTime,
+      updatedAt: session.lastActivity,
+      messageCount: session.messageCount
+    };
+  }
+
+  async listThreads(projectId: string): Promise<any[]> {
+    const sessions = await this.databaseManager.listSessions(projectId);
+    return sessions.map(s => ({
+      id: s.id,
+      name: s.name,
+      projectId: s.projectId,
+      createdAt: s.startTime,
+      updatedAt: s.lastActivity,
+      messageCount: s.messageCount
+    }));
+  }
+
+  async getThread(threadId: string): Promise<any | null> {
+    const session = await this.databaseManager.getSession(threadId);
+    if (!session) return null;
+    
+    return {
+      id: session.id,
+      name: session.name,
+      projectId: session.projectId,
+      createdAt: session.startTime,
+      updatedAt: session.lastActivity,
+      messageCount: session.messageCount
+    };
+  }
+
+  async deleteThread(threadId: string): Promise<void> {
+    await this.databaseManager.deleteChatHistory(threadId);
+    await this.databaseManager.endSession(threadId);
+  }
+
+  async renameThread(threadId: string, newName: string): Promise<void> {
+    await this.databaseManager.updateSessionName(threadId, newName);
+  }
+
+  async getThreadMessages(threadId: string, limit?: number): Promise<any[]> {
+    const messages = await this.databaseManager.getChatHistory(threadId, limit);
+    return messages.map(m => ({
+      id: m.id,
+      type: m.type,
+      content: m.content,
+      timestamp: m.timestamp
+    }));
   }
 
   /**

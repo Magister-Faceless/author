@@ -23,7 +23,7 @@ export interface FileMetadata {
   id: string;
   name: string;
   path: string;
-  type: 'chapter' | 'character' | 'outline' | 'research' | 'notes';
+  type: 'chapter' | 'character' | 'outline' | 'research' | 'notes' | 'directory' | 'markdown' | 'text' | 'code' | 'unknown';
   wordCount: number;
   createdAt: Date;
   updatedAt: Date;

@@ -27,6 +27,14 @@ interface ElectronAPI {
     getStatus: (agentId: string) => Promise<any>;
     executeTask: (task: any) => Promise<any>;
   };
+  thread: {
+    create: (projectId: string, name?: string) => Promise<any>;
+    list: (projectId: string) => Promise<any>;
+    get: (threadId: string) => Promise<any>;
+    delete: (threadId: string) => Promise<any>;
+    rename: (threadId: string, newName: string) => Promise<any>;
+    getMessages: (threadId: string, limit?: number) => Promise<any>;
+  };
   virtualFile: {
     create: (fileData: any) => Promise<any>;
     read: (fileId: string) => Promise<any>;
@@ -101,6 +109,19 @@ const electronAPI: ElectronAPI = {
     executeTask: (task: any) => ipcRenderer.invoke(IPC_CHANNELS.AGENT_EXECUTE_TASK, task),
   },
 
+  // Thread/Session Management
+  thread: {
+    create: (projectId: string, name?: string) => 
+      ipcRenderer.invoke(IPC_CHANNELS.THREAD_CREATE, projectId, name),
+    list: (projectId: string) => ipcRenderer.invoke(IPC_CHANNELS.THREAD_LIST, projectId),
+    get: (threadId: string) => ipcRenderer.invoke(IPC_CHANNELS.THREAD_GET, threadId),
+    delete: (threadId: string) => ipcRenderer.invoke(IPC_CHANNELS.THREAD_DELETE, threadId),
+    rename: (threadId: string, newName: string) => 
+      ipcRenderer.invoke(IPC_CHANNELS.THREAD_RENAME, threadId, newName),
+    getMessages: (threadId: string, limit?: number) => 
+      ipcRenderer.invoke(IPC_CHANNELS.THREAD_GET_MESSAGES, threadId, limit),
+  },
+
   // Virtual File System
   virtualFile: {
     create: (fileData: any) => ipcRenderer.invoke(IPC_CHANNELS.VIRTUAL_FILE_CREATE, fileData),
@@ -157,7 +178,7 @@ const electronAPI: ElectronAPI = {
   on: (channel: string, callback: (data: any) => void) => {
     // Validate channel for security - allow valid prefixes or exact matches
     const validChannels = Object.values(IPC_CHANNELS);
-    const validPrefixes = ['agent:', 'file:', 'project:', 'virtual-file:', 'db:', 'settings:', 'app:', 'error:', 'window:', 'dialog:'];
+    const validPrefixes = ['agent:', 'file:', 'project:', 'virtual-file:', 'db:', 'settings:', 'app:', 'error:', 'window:', 'dialog:', 'thread:'];
     const isValid = validChannels.includes(channel as any) || 
                     validPrefixes.some(prefix => channel.startsWith(prefix));
     

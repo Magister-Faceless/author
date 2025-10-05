@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../store/app-store';
+import { ThreadSelector } from './ThreadSelector';
 
 export const ChatPanel: React.FC = () => {
   const {
     chatThreads,
     activeThreadId,
+    currentProject,
     createThread,
-    deleteThread,
     setActiveThread,
     addMessageToThread,
     getActiveThread
@@ -14,10 +15,11 @@ export const ChatPanel: React.FC = () => {
 
   const [message, setMessage] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [agents, setAgents] = useState<any[]>([]);
-  const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [streamingContent, setStreamingContent] = useState<string>('');
   const [isStreaming, setIsStreaming] = useState(false);
+  const [pendingMessage, setPendingMessage] = useState<string | null>(null);
+  const [justFinishedStreaming, setJustFinishedStreaming] = useState(false);
+  const [toolCalls, setToolCalls] = useState<Array<{id: string, tool: string, args: any, status: string, result?: string}>>([]);
 
   const activeThread = getActiveThread();
 
@@ -27,12 +29,25 @@ export const ChatPanel: React.FC = () => {
     console.log('electronAPI.agent available:', !!(window as any).electronAPI?.agent);
     console.log('electronAPI.on available:', !!(window as any).electronAPI?.on);
     
-    loadAgents();
     // Create default thread if none exists
     if (chatThreads.length === 0) {
       createThread('General Chat');
     }
   }, []);
+
+  // Handle adding pending message to thread (avoids setState during render)
+  useEffect(() => {
+    if (pendingMessage && activeThreadId) {
+      addMessageToThread(activeThreadId, {
+        type: 'assistant',
+        content: pendingMessage,
+        timestamp: new Date().toISOString()
+      });
+      setPendingMessage(null);
+      // Reset the flag after a short delay to allow duplicate message events to be ignored
+      setTimeout(() => setJustFinishedStreaming(false), 100);
+    }
+  }, [pendingMessage, activeThreadId]);
 
   useEffect(() => {
     // Set up event listeners for agent responses
@@ -40,34 +55,55 @@ export const ChatPanel: React.FC = () => {
       console.log('Stream started');
       setIsStreaming(true);
       setStreamingContent('');
+      setToolCalls([]); // Reset tool calls for new message
     };
 
     const handleStreamChunk = (chunk: any) => {
       console.log('Received stream chunk:', chunk);
-      setStreamingContent(chunk.fullContent || '');
+      // Accumulate streaming content
+      setStreamingContent(prev => prev + (chunk.content || chunk.fullContent || ''));
+    };
+
+    const handleToolCall = (toolCall: any) => {
+      console.log('Tool call:', toolCall);
+      setToolCalls(prev => [...prev, {
+        id: toolCall.id,
+        tool: toolCall.tool,
+        args: toolCall.args,
+        status: toolCall.status || 'pending'
+      }]);
+    };
+
+    const handleToolResult = (toolResult: any) => {
+      console.log('Tool result:', toolResult);
+      setToolCalls(prev => prev.map(tc => 
+        tc.id === toolResult.id 
+          ? { ...tc, status: toolResult.status || 'completed', result: toolResult.result }
+          : tc
+      ));
     };
 
     const handleStreamEnd = (data: any) => {
       console.log('Stream ended:', data);
       setIsStreaming(false);
+      setJustFinishedStreaming(true);
       
-      // Add the complete message to the thread
-      if (activeThreadId && data.fullContent) {
-        addMessageToThread(activeThreadId, {
-          type: 'assistant',
-          content: data.fullContent,
-          timestamp: new Date().toISOString()
-        });
-      }
+      // Save the pending message to be added in useEffect
+      setStreamingContent(currentContent => {
+        if (currentContent && activeThreadId) {
+          setPendingMessage(currentContent);
+        }
+        return '';
+      });
       
-      setStreamingContent('');
       setIsProcessing(false);
     };
 
     const handleAgentMessage = (msg: any) => {
       console.log('Received agent message:', msg);
       // This is the fallback for non-streaming responses
-      if (!isStreaming && activeThreadId) {
+      // Don't add if we just finished streaming (avoids duplicates)
+      if (!isStreaming && !justFinishedStreaming && activeThreadId) {
         addMessageToThread(activeThreadId, {
           type: 'assistant',
           content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg),
@@ -96,6 +132,8 @@ export const ChatPanel: React.FC = () => {
       console.log('Setting up agent event listeners');
       (window as any).electronAPI.on('agent:stream-start', handleStreamStart);
       (window as any).electronAPI.on('agent:stream-chunk', handleStreamChunk);
+      (window as any).electronAPI.on('agent:tool-call', handleToolCall);
+      (window as any).electronAPI.on('agent:tool-result', handleToolResult);
       (window as any).electronAPI.on('agent:stream-end', handleStreamEnd);
       (window as any).electronAPI.on('agent:message', handleAgentMessage);
       (window as any).electronAPI.on('agent:error', handleAgentError);
@@ -105,40 +143,22 @@ export const ChatPanel: React.FC = () => {
         if ((window as any).electronAPI?.removeListener) {
           (window as any).electronAPI.removeListener('agent:stream-start', handleStreamStart);
           (window as any).electronAPI.removeListener('agent:stream-chunk', handleStreamChunk);
+          (window as any).electronAPI.removeListener('agent:tool-call', handleToolCall);
+          (window as any).electronAPI.removeListener('agent:tool-result', handleToolResult);
           (window as any).electronAPI.removeListener('agent:stream-end', handleStreamEnd);
           (window as any).electronAPI.removeListener('agent:message', handleAgentMessage);
           (window as any).electronAPI.removeListener('agent:error', handleAgentError);
         }
       };
     }
-    
     return undefined;
   }, [activeThreadId, isStreaming]);
-
-  const loadAgents = async () => {
-    try {
-      if ((window as any).electronAPI?.agent?.listAvailable) {
-        const availableAgents = await (window as any).electronAPI.agent.listAvailable();
-        const agentList = Array.isArray(availableAgents.data || availableAgents) 
-          ? (availableAgents.data || availableAgents) 
-          : [];
-        setAgents(agentList);
-        if (agentList.length > 0) {
-          setSelectedAgent(agentList[0].id);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to load agents:', error);
-    }
-  };
 
   const handleSendMessage = async () => {
     if (!message.trim() || !activeThreadId) {
       console.log('Cannot send: message empty or no active thread');
       return;
     }
-
-    console.log('Sending message:', message);
 
     const userMessage = {
       type: 'user' as const,
@@ -168,14 +188,47 @@ export const ChatPanel: React.FC = () => {
     }
   };
 
-  const handleNewThread = () => {
-    const name = prompt('Thread name:') || `Chat ${chatThreads.length + 1}`;
-    createThread(name);
+  const handleNewThread = async () => {
+    try {
+      if (!currentProject?.id) {
+        console.error('No project selected');
+        // Fallback to local-only thread
+        createThread(`Chat ${chatThreads.length + 1}`);
+        return;
+      }
+
+      // Create thread in backend
+      const thread = await (window as any).electronAPI.thread.create(
+        currentProject.id,
+        `Chat ${new Date().toLocaleTimeString()}`
+      );
+
+      // Create in local store
+      createThread(thread.name);
+      setActiveThread(thread.id);
+      
+      console.log('New thread created:', thread);
+    } catch (error) {
+      console.error('Failed to create thread:', error);
+      // Fallback to local-only thread
+      createThread(`Chat ${chatThreads.length + 1}`);
+    }
   };
 
-  const handleDeleteThread = (threadId: string) => {
-    if (confirm('Delete this thread?')) {
-      deleteThread(threadId);
+  const handleThreadSelect = async (threadId: string | null) => {
+    if (!threadId) return;
+    
+    try {
+      // Load thread messages
+      const messages = await (window as any).electronAPI.thread.getMessages(threadId);
+      
+      // Update store
+      setActiveThread(threadId);
+      
+      // TODO: Populate messages into the thread
+      console.log('Loaded thread messages:', messages);
+    } catch (error) {
+      console.error('Failed to load thread:', error);
     }
   };
 
@@ -188,103 +241,36 @@ export const ChatPanel: React.FC = () => {
       color: '#cccccc',
       fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif"
     }}>
-      {/* Header */}
+      {/* Thread Selector - Matches screenshot header height */}
       <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        padding: '12px 16px',
-        borderBottom: '1px solid #3a3a3a'
-      }}>
-        <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 600 }}>
-          🤖 AI Assistant
-        </h3>
-        <button
-          onClick={handleNewThread}
-          style={{
-            padding: '4px 8px',
-            backgroundColor: '#4a9eff',
-            border: 'none',
-            borderRadius: '4px',
-            color: '#ffffff',
-            cursor: 'pointer',
-            fontSize: '12px'
-          }}
-        >
-          + New
-        </button>
-      </div>
-
-      {/* Thread List */}
-      <div style={{
-        maxHeight: '150px',
-        overflowY: 'auto',
+        padding: '4px 16px',
         borderBottom: '1px solid #3a3a3a',
-        backgroundColor: '#252526'
+        backgroundColor: '#252526',
+        height: '40px',
+        display: 'flex',
+        alignItems: 'center'
       }}>
-        {chatThreads.map(thread => (
-          <div
-            key={thread.id}
-            onClick={() => setActiveThread(thread.id)}
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              padding: '8px 16px',
-              backgroundColor: thread.id === activeThreadId ? '#2a2a2a' : 'transparent',
-              borderLeft: thread.id === activeThreadId ? '3px solid #4a9eff' : '3px solid transparent',
-              cursor: 'pointer',
-              fontSize: '13px'
-            }}
-            onMouseEnter={(e) => {
-              if (thread.id !== activeThreadId) e.currentTarget.style.backgroundColor = '#2a2a2a';
-            }}
-            onMouseLeave={(e) => {
-              if (thread.id !== activeThreadId) e.currentTarget.style.backgroundColor = 'transparent';
-            }}
-          >
-            <span>{thread.name}</span>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleDeleteThread(thread.id);
-              }}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: '#888',
-                cursor: 'pointer',
-                fontSize: '16px'
-              }}
-            >
-              ×
-            </button>
-          </div>
-        ))}
+        <ThreadSelector
+          currentThreadId={activeThreadId}
+          projectId={currentProject?.id || null}
+          onThreadSelect={handleThreadSelect}
+          onNewThread={handleNewThread}
+        />
       </div>
 
-      {/* Agent Selection */}
-      <div style={{ padding: '12px 16px', borderBottom: '1px solid #3a3a3a' }}>
-        <select
-          value={selectedAgent || ''}
-          onChange={(e) => setSelectedAgent(e.target.value)}
-          style={{
-            width: '100%',
-            padding: '6px',
-            backgroundColor: '#2a2a2a',
-            border: '1px solid #3a3a3a',
-            borderRadius: '4px',
-            color: '#cccccc',
-            fontSize: '12px'
-          }}
-        >
-          <option value="">Select agent...</option>
-          {agents.map(agent => (
-            <option key={agent.id} value={agent.id}>
-              {agent.name}
-            </option>
-          ))}
-        </select>
+      {/* Messages Display */}
+      <div style={{
+        flex: 1,
+        overflowY: 'auto',
+        padding: '16px',
+        backgroundColor: '#1e1e1e'
+      }}>
+        {/* Placeholder for messages rendering - will be shown from active thread */}
+        {activeThread && activeThread.messages.length === 0 && (
+          <div style={{ textAlign: 'center', color: '#666', padding: '40px' }}>
+            Start a conversation...
+          </div>
+        )}
       </div>
 
       {/* Messages */}
@@ -340,7 +326,7 @@ export const ChatPanel: React.FC = () => {
               </div>
             ))}
             {/* Show streaming content */}
-            {isStreaming && streamingContent && (
+            {isStreaming && (streamingContent || toolCalls.length > 0) && (
               <div
                 style={{
                   marginBottom: '16px',
@@ -365,9 +351,110 @@ export const ChatPanel: React.FC = () => {
                   </span>
                   <span>{new Date().toLocaleTimeString()}</span>
                 </div>
-                <div style={{ fontSize: '13px', lineHeight: '1.5' }}>
-                  {streamingContent}
-                </div>
+
+                {/* Tool Calls - Modern UI */}
+                {toolCalls.length > 0 && (
+                  <div style={{ marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {toolCalls.map((tc) => (
+                      <div
+                        key={tc.id}
+                        style={{
+                          padding: '12px 14px',
+                          background: tc.status === 'completed' 
+                            ? 'linear-gradient(135deg, #1a2f1a 0%, #1a3a2a 100%)' 
+                            : 'linear-gradient(135deg, #2a1f1a 0%, #3a2a1a 100%)',
+                          borderRadius: '8px',
+                          fontSize: '13px',
+                          border: `1px solid ${tc.status === 'completed' ? '#3a6a4a' : '#6a4a3a'}`,
+                          boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+                          transition: 'all 0.3s ease',
+                        }}
+                      >
+                        <div style={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          justifyContent: 'space-between',
+                          marginBottom: '8px'
+                        }}>
+                          <div style={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '8px',
+                            fontWeight: 600,
+                            color: tc.status === 'completed' ? '#6fa76f' : '#d4a574',
+                            fontSize: '13px'
+                          }}>
+                            <span style={{ 
+                              fontSize: '16px',
+                              animation: tc.status === 'pending' ? 'pulse 2s infinite' : 'none'
+                            }}>
+                              {tc.status === 'pending' ? '⚡' : '✓'}
+                            </span>
+                            <span>{tc.tool.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</span>
+                          </div>
+                          <span style={{
+                            fontSize: '10px',
+                            padding: '2px 8px',
+                            borderRadius: '10px',
+                            backgroundColor: tc.status === 'completed' ? '#2a5a3a' : '#5a4a2a',
+                            color: tc.status === 'completed' ? '#8fc88f' : '#e6c48f',
+                            textTransform: 'uppercase',
+                            fontWeight: 600,
+                            letterSpacing: '0.5px'
+                          }}>
+                            {tc.status}
+                          </span>
+                        </div>
+                        {tc.args && Object.keys(tc.args).length > 0 && (
+                          <div style={{ 
+                            padding: '8px 10px',
+                            backgroundColor: 'rgba(0,0,0,0.3)',
+                            borderRadius: '6px',
+                            fontSize: '11px',
+                            fontFamily: 'Consolas, monospace',
+                            color: '#aaa',
+                            marginBottom: tc.result ? '8px' : '0',
+                            maxHeight: '120px',
+                            overflow: 'auto'
+                          }}>
+                            {Object.entries(tc.args).map(([key, value]) => (
+                              <div key={key} style={{ marginBottom: '4px' }}>
+                                <span style={{ color: '#7a9ac7' }}>{key}</span>
+                                <span style={{ color: '#888' }}>: </span>
+                                <span style={{ color: '#c7a97a' }}>
+                                  {typeof value === 'string' && value.length > 80 
+                                    ? `"${value.substring(0, 80)}..."` 
+                                    : JSON.stringify(value)}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {tc.result && (
+                          <div style={{ 
+                            padding: '8px 10px',
+                            backgroundColor: 'rgba(0,0,0,0.3)',
+                            borderRadius: '6px',
+                            fontSize: '11px',
+                            color: '#8fc88f',
+                            borderLeft: '3px solid #6fa76f',
+                            fontFamily: 'Consolas, monospace'
+                          }}>
+                            <div style={{ fontWeight: 600, marginBottom: '4px', color: '#6fa76f' }}>Result:</div>
+                            {tc.result.substring(0, 150)}{tc.result.length > 150 ? '...' : ''}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Streaming text */}
+                {streamingContent && (
+                  <div style={{ fontSize: '13px', lineHeight: '1.5' }}>
+                    {streamingContent}
+                  </div>
+                )}
               </div>
             )}
           </>

@@ -55,17 +55,30 @@ export class FileManager {
       const files: FileMetadata[] = [];
 
       for (const entry of entries) {
+        const itemPath = path.join(directoryPath, entry.name);
+        const stats = await fs.stat(itemPath);
+        
         if (entry.isFile()) {
-          const filePath = path.join(directoryPath, entry.name);
-          const stats = await fs.stat(filePath);
-          const content = await this.readFile(filePath);
+          const content = await this.readFile(itemPath);
           
           files.push({
-            id: this.generateFileId(filePath),
+            id: this.generateFileId(itemPath),
             name: entry.name,
-            path: filePath,
+            path: itemPath,
             type: this.getFileType(entry.name),
             wordCount: this.countWords(content),
+            createdAt: stats.birthtime,
+            updatedAt: stats.mtime,
+            projectId: '', // Will be set by caller
+          });
+        } else if (entry.isDirectory()) {
+          // Include directories
+          files.push({
+            id: this.generateFileId(itemPath),
+            name: entry.name,
+            path: itemPath,
+            type: 'directory', // Mark as directory
+            wordCount: 0,
             createdAt: stats.birthtime,
             updatedAt: stats.mtime,
             projectId: '', // Will be set by caller
@@ -73,7 +86,12 @@ export class FileManager {
         }
       }
 
-      return files.sort((a, b) => a.name.localeCompare(b.name));
+      // Sort: directories first, then files, alphabetically within each group
+      return files.sort((a, b) => {
+        if (a.type === 'directory' && b.type !== 'directory') return -1;
+        if (a.type !== 'directory' && b.type === 'directory') return 1;
+        return a.name.localeCompare(b.name);
+      });
     } catch (error: any) {
       throw new Error(`Failed to list files in ${directoryPath}: ${error.message}`);
     }
@@ -159,9 +177,16 @@ export class FileManager {
     return backupPath;
   }
 
-  private getFileType(fileName: string): 'chapter' | 'character' | 'outline' | 'research' | 'notes' {
+  private getFileType(fileName: string): 'chapter' | 'character' | 'outline' | 'research' | 'notes' | 'directory' | 'markdown' | 'text' | 'code' | 'unknown' {
     const lowerName = fileName.toLowerCase();
+    const ext = path.extname(fileName).toLowerCase();
     
+    // Check by file extension first
+    if (ext === '.md') return 'markdown';
+    if (ext === '.txt') return 'text';
+    if (['.py', '.js', '.ts', '.tsx', '.jsx', '.json', '.html', '.css', '.yaml', '.yml'].includes(ext)) return 'code';
+    
+    // Check by name patterns (for legacy/special files)
     if (lowerName.includes('chapter') || lowerName.match(/ch\d+/)) {
       return 'chapter';
     } else if (lowerName.includes('character') || lowerName.includes('char')) {
@@ -170,8 +195,10 @@ export class FileManager {
       return 'outline';
     } else if (lowerName.includes('research') || lowerName.includes('ref')) {
       return 'research';
-    } else {
+    } else if (lowerName.includes('note')) {
       return 'notes';
+    } else {
+      return 'unknown';
     }
   }
 

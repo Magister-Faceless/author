@@ -13,6 +13,25 @@ export const MultiTabEditor: React.FC = () => {
 
   const activeTab = getActiveTab();
   const [localContent, setLocalContent] = useState('');
+  const [agents, setAgents] = useState<any[]>([]);
+  const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
+
+  useEffect(() => {
+    const loadAgents = async () => {
+      try {
+        const result = await (window as any).electronAPI.agent.listAvailable();
+        if (result && result.success && result.data) {
+          setAgents(result.data);
+          if (result.data.length > 0 && !selectedAgent) {
+            setSelectedAgent(result.data[0].id);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading agents:', error);
+      }
+    };
+    loadAgents();
+  }, []);
 
   useEffect(() => {
     if (activeTab) {
@@ -55,11 +74,13 @@ export const MultiTabEditor: React.FC = () => {
     closeTab(tabId);
   };
 
-  const getWordCount = (text: string): number => {
+  const getWordCount = (text: string | undefined): number => {
+    if (!text || typeof text !== 'string') return 0;
     return text.trim().split(/\s+/).filter(word => word.length > 0).length;
   };
 
-  const getLineCount = (text: string): number => {
+  const getLineCount = (text: string | undefined): number => {
+    if (!text || typeof text !== 'string') return 0;
     return text.split('\n').length;
   };
 
@@ -72,6 +93,39 @@ export const MultiTabEditor: React.FC = () => {
       color: '#cccccc',
       fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif"
     }}>
+      {/* Header with Agent Selector - Matches screenshot */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: '4px 16px',
+        backgroundColor: '#252526',
+        borderBottom: '1px solid #3a3a3a',
+        height: '40px'
+      }}>
+        <select
+          value={selectedAgent || ''}
+          onChange={(e) => setSelectedAgent(e.target.value)}
+          style={{
+            padding: '4px 8px',
+            backgroundColor: '#2a2a2a',
+            border: '1px solid #3a3a3a',
+            borderRadius: '3px',
+            color: '#cccccc',
+            fontSize: '13px',
+            minWidth: '180px',
+            cursor: 'pointer'
+          }}
+        >
+          <option value="">Select agent...</option>
+          {agents.map(agent => (
+            <option key={agent.id} value={agent.id}>
+              {agent.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
       {/* Tab Bar */}
       <div style={{
         display: 'flex',

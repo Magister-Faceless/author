@@ -344,6 +344,11 @@ export const useAppStore = create<AppStore>()(
         columnWidths: state.columnWidths,
         expandedFolders: Array.from(state.expandedFolders),
       }),
+      merge: (persistedState: any, currentState) => ({
+        ...currentState,
+        ...persistedState,
+        expandedFolders: new Set(persistedState.expandedFolders || []),
+      }),
     }
   )
 );

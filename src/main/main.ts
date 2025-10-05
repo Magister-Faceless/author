@@ -96,11 +96,33 @@ class AuthorApplication {
   private setupIpcHandlers(): void {
     // Project Management
     ipcMain.handle(IPC_CHANNELS.PROJECT_CREATE, async (_, data) => {
-      return this.handleIpcRequest(() => this.projectManager.createProject(data));
+      return this.handleIpcRequest(async () => {
+        const project = await this.projectManager.createProject(data);
+        
+        // Initialize DeepAgents in background (non-blocking)
+        if (process.env.USE_DEEPAGENTS === 'true' && project.path) {
+          this.agentManager.initializeDeepAgents(project.path).catch(error => {
+            this.logger.error('Failed to initialize DeepAgents:', error);
+          });
+        }
+        
+        return project;
+      });
     });
 
     ipcMain.handle(IPC_CHANNELS.PROJECT_OPEN, async (_, projectId) => {
-      return this.handleIpcRequest(() => this.projectManager.openProject(projectId));
+      return this.handleIpcRequest(async () => {
+        const project = await this.projectManager.openProject(projectId);
+        
+        // Initialize DeepAgents in background (non-blocking)
+        if (process.env.USE_DEEPAGENTS === 'true' && project.path) {
+          this.agentManager.initializeDeepAgents(project.path).catch(error => {
+            this.logger.error('Failed to initialize DeepAgents:', error);
+          });
+        }
+        
+        return project;
+      });
     });
 
     ipcMain.handle(IPC_CHANNELS.PROJECT_LIST, async () => {
@@ -143,6 +165,31 @@ class AuthorApplication {
 
     ipcMain.handle('agent:interrupt', async () => {
       return this.handleIpcRequest(() => this.agentManager.interrupt());
+    });
+
+    // Thread/Session Management
+    ipcMain.handle(IPC_CHANNELS.THREAD_CREATE, async (_, projectId, name) => {
+      return this.handleIpcRequest(() => this.agentManager.createThread(projectId, name));
+    });
+
+    ipcMain.handle(IPC_CHANNELS.THREAD_LIST, async (_, projectId) => {
+      return this.handleIpcRequest(() => this.agentManager.listThreads(projectId));
+    });
+
+    ipcMain.handle(IPC_CHANNELS.THREAD_GET, async (_, threadId) => {
+      return this.handleIpcRequest(() => this.agentManager.getThread(threadId));
+    });
+
+    ipcMain.handle(IPC_CHANNELS.THREAD_DELETE, async (_, threadId) => {
+      return this.handleIpcRequest(() => this.agentManager.deleteThread(threadId));
+    });
+
+    ipcMain.handle(IPC_CHANNELS.THREAD_RENAME, async (_, threadId, newName) => {
+      return this.handleIpcRequest(() => this.agentManager.renameThread(threadId, newName));
+    });
+
+    ipcMain.handle(IPC_CHANNELS.THREAD_GET_MESSAGES, async (_, threadId, limit) => {
+      return this.handleIpcRequest(() => this.agentManager.getThreadMessages(threadId, limit));
     });
 
     ipcMain.handle('agent:set-project', async (_, projectId) => {

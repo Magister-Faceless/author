@@ -1,0 +1,58 @@
+================================================================================
+   QUICK START - Author App with DeepAgents
+================================================================================
+
+STEP 1: Install wait-on (ONE TIME ONLY)
+----------------------------------------
+npm install --save-dev wait-on
+
+
+STEP 2: Start the app
+----------------------------------------
+npm start
+
+
+That's it! Everything starts automatically.
+
+OR if you prefer manual control:
+
+TERMINAL 1:
+npm run dev
+
+TERMINAL 2 (wait for "compiled successfully"):
+npm run electron:dev
+
+
+================================================================================
+What you should see:
+================================================================================
+
+🧠 Using DeepAgents Service (RECOMMENDED)
+Starting Python backend...
+✅ Python backend is ready
+✅ DeepAgents initialized successfully
+
+
+================================================================================
+Test it works:
+================================================================================
+
+In the app chat, type:
+"Help me outline a fantasy novel"
+
+You should see:
+- Todo list created automatically
+- Real-time updates
+- Mentions of planning-agent/writing-agent
+
+
+================================================================================
+If you see "Using OpenRouter Agent Service (LEGACY)":
+================================================================================
+
+Check your .env file has:
+USE_DEEPAGENTS=true
+USE_CLAUDE_SDK=false
+
+
+================================================================================

@@ -37,6 +37,14 @@ export const IPC_CHANNELS = {
   AGENT_SESSION_STARTED: 'agent:session-started',
   AGENT_QUERY_COMPLETE: 'agent:query-complete',
 
+  // Thread/Session Management
+  THREAD_CREATE: 'thread:create',
+  THREAD_LIST: 'thread:list',
+  THREAD_GET: 'thread:get',
+  THREAD_DELETE: 'thread:delete',
+  THREAD_RENAME: 'thread:rename',
+  THREAD_GET_MESSAGES: 'thread:get-messages',
+
   // Virtual File System
   VIRTUAL_FILE_CREATE: 'virtual-file:create',
   VIRTUAL_FILE_READ: 'virtual-file:read',

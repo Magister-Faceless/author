@@ -18,11 +18,36 @@ export const FileExplorer: React.FC = () => {
     y: number;
     node: FileNode;
   } | null>(null);
+  
+  const [showNewFileDialog, setShowNewFileDialog] = useState(false);
+  const [showNewFolderDialog, setShowNewFolderDialog] = useState(false);
+  const [newFileName, setNewFileName] = useState('');
+  const [newFolderName, setNewFolderName] = useState('');
+  const [fileType, setFileType] = useState('.md');
 
   useEffect(() => {
     if (currentProject) {
       loadFileTree();
     }
+  }, [currentProject]);
+
+  // Listen for file operations from agent and refresh
+  useEffect(() => {
+    const handleFileOperation = () => {
+      console.log('File operation detected, refreshing tree...');
+      setTimeout(() => loadFileTree(), 500);
+    };
+
+    if ((window as any).electronAPI?.on) {
+      (window as any).electronAPI.on('agent:file-operation', handleFileOperation);
+      
+      return () => {
+        if ((window as any).electronAPI?.removeListener) {
+          (window as any).electronAPI.removeListener('agent:file-operation', handleFileOperation);
+        }
+      };
+    }
+    return undefined;
   }, [currentProject]);
 
   const loadFileTree = async () => {
@@ -49,39 +74,45 @@ export const FileExplorer: React.FC = () => {
   const buildFileTree = async (dirPath: string): Promise<FileNode[]> => {
     try {
       const response = await (window as any).electronAPI.file.list(dirPath);
+      console.log('File list response:', response);
       const files = response.data || response;
       
-      if (!Array.isArray(files)) return [];
+      if (!Array.isArray(files)) {
+        console.warn('Files is not an array:', files);
+        return [];
+      }
+
+      console.log('Files found:', files.length, files);
 
       const nodes: FileNode[] = [];
       
-      // Add folders first
+      // Process all items
       for (const file of files) {
-        if (file.type === 'folder' || file.path.includes('/')) {
-          const folderName = file.name || file.path.split('/').pop();
+        // Check if it's a directory
+        const isDirectory = file.type === 'directory' || file.type === 'folder';
+        const fileName = file.name || (typeof file === 'string' ? file : file.path?.split(/[/\\]/).pop() || 'Unknown');
+        const filePath = file.path || (typeof file === 'string' ? `${dirPath}/${file}` : file);
+
+        if (isDirectory) {
           nodes.push({
-            id: file.path,
-            name: folderName,
-            path: file.path,
+            id: filePath,
+            name: fileName,
+            path: filePath,
             type: 'folder',
             children: [],
             isExpanded: false
           });
-        }
-      }
-      
-      // Add files
-      for (const file of files) {
-        if (file.type !== 'folder' && !file.path.includes('/')) {
+        } else {
           nodes.push({
-            id: file.path,
-            name: file.name,
-            path: file.path,
+            id: filePath,
+            name: fileName,
+            path: filePath,
             type: 'file'
           });
         }
       }
 
+      console.log('Built nodes:', nodes);
       return nodes;
     } catch (error) {
       console.error('Error building file tree:', error);
@@ -173,13 +204,46 @@ export const FileExplorer: React.FC = () => {
 
     try {
       await (window as any).electronAPI.file.delete(contextMenu.node.path);
-      loadFileTree();
+      await loadFileTree();
+      setContextMenu(null);
     } catch (error) {
       console.error('Failed to delete:', error);
-      alert('Failed to delete');
+      alert('Failed to delete file');
     }
-    
-    setContextMenu(null);
+  };
+
+  const handleCreateFile = async () => {
+    if (!currentProject || !newFileName.trim()) return;
+
+    try {
+      // Add file extension if not present
+      const fileName = newFileName.includes('.') ? newFileName : `${newFileName}${fileType}`;
+      const filePath = `${currentProject.path}/${fileName}`;
+      await (window as any).electronAPI.file.write(filePath, '');
+      await loadFileTree();
+      setShowNewFileDialog(false);
+      setNewFileName('');
+      setFileType('.md'); // Reset to default
+    } catch (error) {
+      console.error('Failed to create file:', error);
+      alert('Failed to create file');
+    }
+  };
+
+  const handleCreateFolder = async () => {
+    if (!currentProject || !newFolderName.trim()) return;
+
+    try {
+      const folderPath = `${currentProject.path}/${newFolderName}`;
+      // Create a placeholder file in the folder to ensure it exists
+      await (window as any).electronAPI.file.write(`${folderPath}/.gitkeep`, '');
+      await loadFileTree();
+      setShowNewFolderDialog(false);
+      setNewFolderName('');
+    } catch (error) {
+      console.error('Failed to create folder:', error);
+      alert('Failed to create folder');
+    }
   };
 
   const renderNode = (node: FileNode, level: number = 0): React.ReactNode => {
@@ -238,27 +302,97 @@ export const FileExplorer: React.FC = () => {
       overflow: 'auto',
       fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif"
     }}>
-      {/* Header */}
+      {/* Header - Matches screenshot */}
       <div style={{
-        padding: '8px 12px',
+        padding: '4px 12px',
+        backgroundColor: '#252526',
         borderBottom: '1px solid #3a3a3a',
         fontSize: '11px',
         fontWeight: 600,
         textTransform: 'uppercase',
-        color: '#888'
+        color: '#888',
+        height: '40px',
+        display: 'flex',
+        alignItems: 'center'
       }}>
-        Explorer
+        EXPLORER
       </div>
 
-      {/* Project Name */}
+      {/* Project Name & Actions */}
       {currentProject && (
         <div style={{
-          padding: '8px 12px',
+          padding: '6px 8px',
           fontSize: '13px',
-          fontWeight: 500,
-          borderBottom: '1px solid #3a3a3a'
+          fontWeight: 400,
+          borderBottom: '1px solid #3a3a3a',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          backgroundColor: '#1e1e1e'
         }}>
-          {currentProject.name}
+          <span>{currentProject.name}</span>
+          <div style={{ display: 'flex', gap: '2px' }}>
+            <button
+              onClick={() => setShowNewFileDialog(true)}
+              style={{
+                padding: '4px 8px',
+                backgroundColor: '#3a3a3a',
+                border: 'none',
+                borderRadius: '3px',
+                color: '#ccc',
+                cursor: 'pointer',
+                fontSize: '16px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '28px',
+                height: '28px'
+              }}
+              title="New File"
+            >
+              📄
+            </button>
+            <button
+              onClick={() => setShowNewFolderDialog(true)}
+              style={{
+                padding: '4px 8px',
+                backgroundColor: '#3a3a3a',
+                border: 'none',
+                borderRadius: '3px',
+                color: '#ccc',
+                cursor: 'pointer',
+                fontSize: '16px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '28px',
+                height: '28px'
+              }}
+              title="New Folder"
+            >
+              📁
+            </button>
+            <button
+              onClick={loadFileTree}
+              style={{
+                padding: '4px 8px',
+                backgroundColor: '#3a3a3a',
+                border: 'none',
+                borderRadius: '3px',
+                color: '#ccc',
+                cursor: 'pointer',
+                fontSize: '16px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '28px',
+                height: '28px'
+              }}
+              title="Refresh"
+            >
+              🔄
+            </button>
+          </div>
         </div>
       )}
 
@@ -346,6 +480,189 @@ export const FileExplorer: React.FC = () => {
             </div>
           </div>
         </>
+      )}
+
+      {/* New File Dialog */}
+      {showNewFileDialog && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            backgroundColor: '#2a2a2a',
+            padding: '20px',
+            borderRadius: '8px',
+            minWidth: '300px',
+            border: '1px solid #3a3a3a'
+          }}>
+            <h3 style={{ margin: '0 0 16px 0', fontSize: '14px' }}>New File</h3>
+            <input
+              type="text"
+              value={newFileName}
+              onChange={(e) => setNewFileName(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && handleCreateFile()}
+              placeholder="filename"
+              autoFocus
+              style={{
+                width: '100%',
+                padding: '8px',
+                backgroundColor: '#1e1e1e',
+                border: '1px solid #3a3a3a',
+                borderRadius: '4px',
+                color: '#ccc',
+                fontSize: '13px',
+                marginBottom: '12px'
+              }}
+            />
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', marginBottom: '6px', fontSize: '12px', color: '#888' }}>
+                File Type:
+              </label>
+              <select
+                value={fileType}
+                onChange={(e) => setFileType(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '8px',
+                  backgroundColor: '#1e1e1e',
+                  border: '1px solid #3a3a3a',
+                  borderRadius: '4px',
+                  color: '#ccc',
+                  fontSize: '13px',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value=".md">Markdown (.md)</option>
+                <option value=".txt">Text (.txt)</option>
+                <option value=".csv">CSV (.csv)</option>
+                <option value=".py">Python (.py)</option>
+                <option value=".js">JavaScript (.js)</option>
+                <option value=".ts">TypeScript (.ts)</option>
+                <option value=".tsx">TypeScript React (.tsx)</option>
+                <option value=".jsx">JavaScript React (.jsx)</option>
+                <option value=".json">JSON (.json)</option>
+                <option value=".html">HTML (.html)</option>
+                <option value=".css">CSS (.css)</option>
+                <option value=".yaml">YAML (.yaml)</option>
+                <option value=".yml">YAML (.yml)</option>
+              </select>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => {
+                  setShowNewFileDialog(false);
+                  setNewFileName('');
+                }}
+                style={{
+                  padding: '6px 12px',
+                  backgroundColor: '#3a3a3a',
+                  border: 'none',
+                  borderRadius: '4px',
+                  color: '#ccc',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateFile}
+                style={{
+                  padding: '6px 12px',
+                  backgroundColor: '#4a9eff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  color: '#fff',
+                  cursor: 'pointer'
+                }}
+              >
+                Create
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* New Folder Dialog */}
+      {showNewFolderDialog && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            backgroundColor: '#2a2a2a',
+            padding: '20px',
+            borderRadius: '8px',
+            minWidth: '300px',
+            border: '1px solid #3a3a3a'
+          }}>
+            <h3 style={{ margin: '0 0 16px 0', fontSize: '14px' }}>New Folder</h3>
+            <input
+              type="text"
+              value={newFolderName}
+              onChange={(e) => setNewFolderName(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && handleCreateFolder()}
+              placeholder="foldername"
+              autoFocus
+              style={{
+                width: '100%',
+                padding: '8px',
+                backgroundColor: '#1e1e1e',
+                border: '1px solid #3a3a3a',
+                borderRadius: '4px',
+                color: '#ccc',
+                fontSize: '13px',
+                marginBottom: '16px'
+              }}
+            />
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => {
+                  setShowNewFolderDialog(false);
+                  setNewFolderName('');
+                }}
+                style={{
+                  padding: '6px 12px',
+                  backgroundColor: '#3a3a3a',
+                  border: 'none',
+                  borderRadius: '4px',
+                  color: '#ccc',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateFolder}
+                style={{
+                  padding: '6px 12px',
+                  backgroundColor: '#4a9eff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  color: '#fff',
+                  cursor: 'pointer'
+                }}
+              >
+                Create
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

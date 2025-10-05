@@ -15,6 +15,7 @@ export interface ChatMessage {
 export interface Session {
   id: string;
   projectId: string;
+  name: string; // Thread name
   startTime: Date;
   endTime?: Date;
   messageCount: number;
@@ -142,10 +143,11 @@ export class DatabaseManager {
   }
 
   // Session operations
-  async createSession(projectId: string): Promise<Session> {
+  async createSession(projectId: string, name?: string): Promise<Session> {
     const session: Session = {
       id: this.generateId(),
       projectId,
+      name: name || `Chat ${this.mockSessions.length + 1}`,
       startTime: new Date(),
       messageCount: 0,
       lastActivity: new Date(),
@@ -153,6 +155,13 @@ export class DatabaseManager {
 
     this.mockSessions.push(session);
     return session;
+  }
+
+  async updateSessionName(sessionId: string, name: string): Promise<void> {
+    const session = this.mockSessions.find(s => s.id === sessionId);
+    if (session) {
+      session.name = name;
+    }
   }
 
   async getSession(sessionId: string): Promise<Session | null> {
