@@ -56,6 +56,9 @@ interface AppStore {
   chatThreads: ChatThread[];
   activeThreadId: string | null;
   
+  // Author Mode
+  authorMode: 'fiction' | 'non-fiction' | 'academic';
+  
   // Layout
   columnWidths: {
     explorer: number;
@@ -98,6 +101,10 @@ interface AppStore {
   addMessageToThread: (threadId: string, message: Omit<ChatMessage, 'id'>) => void;
   updateThreadName: (threadId: string, name: string) => void;
   
+  // Author Mode Actions
+  setAuthorMode: (mode: 'fiction' | 'non-fiction' | 'academic') => void;
+  getAuthorMode: () => 'fiction' | 'non-fiction' | 'academic';
+  
   // Layout Actions
   setColumnWidth: (column: 'explorer' | 'editor' | 'chat', width: number) => void;
   
@@ -136,6 +143,9 @@ export const useAppStore = create<AppStore>()(
       // Chat
       chatThreads: [],
       activeThreadId: null,
+      
+      // Author Mode
+      authorMode: 'fiction', // Default to fiction mode
       
       // Layout
       columnWidths: {
@@ -315,6 +325,10 @@ export const useAppStore = create<AppStore>()(
         )
       })),
       
+      // Author Mode Actions
+      setAuthorMode: (mode) => set({ authorMode: mode }),
+      getAuthorMode: () => get().authorMode,
+      
       // Layout Actions
       setColumnWidth: (column, width) => set((state) => ({
         columnWidths: { ...state.columnWidths, [column]: width }
@@ -343,11 +357,16 @@ export const useAppStore = create<AppStore>()(
       partialize: (state) => ({
         columnWidths: state.columnWidths,
         expandedFolders: Array.from(state.expandedFolders),
+        authorMode: state.authorMode, // Persist author mode
+        chatThreads: state.chatThreads, // Persist chat threads
+        activeThreadId: state.activeThreadId, // Persist active thread
       }),
       merge: (persistedState: any, currentState) => ({
         ...currentState,
         ...persistedState,
         expandedFolders: new Set(persistedState.expandedFolders || []),
+        chatThreads: persistedState.chatThreads || [],
+        activeThreadId: persistedState.activeThreadId || null,
       }),
     }
   )

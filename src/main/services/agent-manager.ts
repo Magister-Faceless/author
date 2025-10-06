@@ -359,6 +359,18 @@ export class AgentManager {
   }
 
   /**
+   * Change author mode (Fiction, Non-Fiction, Academic)
+   */
+  async changeMode(mode: string): Promise<void> {
+    if (this.useDeepAgents && this.agentService instanceof DeepAgentService) {
+      console.log(`Changing author mode to: ${mode}`);
+      await this.agentService.changeMode(mode);
+    } else {
+      console.log('Mode change only supported for DeepAgents service');
+    }
+  }
+
+  /**
    * Get chat history for a session
    */
   async getChatHistory(sessionId: string, limit?: number): Promise<ChatMessage[]> {

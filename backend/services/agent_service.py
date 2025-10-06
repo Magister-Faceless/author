@@ -13,7 +13,7 @@ sys.path.insert(0, str(PathLib(__file__).parent.parent))
 
 from models import get_default_model
 from tools.file_tools import create_file_tools
-from prompts import MAIN_AGENT_INSTRUCTIONS, get_all_subagents
+from prompts.prompt_templates import get_main_agent_prompt, get_subagent_configs, get_available_modes
 from config import MAX_TURNS, STREAM_DELAY
 
 
@@ -22,14 +22,16 @@ class AgentService:
     Service for managing DeepAgent instances and streaming responses.
     """
     
-    def __init__(self, project_path: str):
+    def __init__(self, project_path: str, author_mode: str = 'fiction'):
         """
         Initialize the agent service.
         
         Args:
             project_path: Absolute path to the project directory
+            author_mode: Author mode (fiction, non-fiction, academic)
         """
         self.project_path = Path(project_path).resolve()
+        self.author_mode = author_mode
         self.agent = None
         self._initialize_agent()
     
@@ -44,8 +46,11 @@ class AgentService:
         # Get model
         model = get_default_model()
         
-        # Get subagent configurations and convert tool names to tool objects
-        subagent_configs = get_all_subagents()
+        # Get mode-specific prompts
+        main_agent_prompt = get_main_agent_prompt(self.author_mode)
+        subagent_configs = get_subagent_configs(self.author_mode)
+        
+        # Convert tool name strings to actual tool objects for subagents
         subagents = []
         for config in subagent_configs:
             # Convert tool name strings to actual tool objects
@@ -59,15 +64,18 @@ class AgentService:
                 "tools": tools,
             })
         
-        # Create the deep agent
+        # Create the deep agent with mode-specific prompts
+        # Set high recursion limit for complex, long-running book writing tasks
         self.agent = async_create_deep_agent(
             tools=file_tools,
-            instructions=MAIN_AGENT_INSTRUCTIONS,
+            instructions=main_agent_prompt,
             model=model,
             subagents=subagents,
+            recursion_limit=500,  # Allow deep agent-subagent collaboration for complex tasks
         )
         
         print(f"[OK] Agent initialized for project: {self.project_path}")
+        print(f"   Mode: {self.author_mode}")
         print(f"   Tools: {len(file_tools)} file operations")
         print(f"   Subagents: {len(subagents)} specialized agents")
     
@@ -250,3 +258,22 @@ class AgentService:
         """
         self.project_path = Path(new_project_path).resolve()
         self._initialize_agent()
+    
+    def change_mode(self, new_mode: str):
+        """
+        Change the author mode and reinitialize agent with new prompts.
+        
+        Args:
+            new_mode: New author mode (fiction, non-fiction, academic)
+        """
+        available_modes = get_available_modes()
+        if new_mode not in available_modes:
+            raise ValueError(f"Invalid mode '{new_mode}'. Available modes: {available_modes}")
+        
+        self.author_mode = new_mode
+        self._initialize_agent()
+        print(f"[OK] Author mode changed to: {self.author_mode}")
+    
+    def get_current_mode(self) -> str:
+        """Get the current author mode."""
+        return self.author_mode

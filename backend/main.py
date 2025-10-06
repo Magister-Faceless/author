@@ -92,11 +92,13 @@ async def websocket_endpoint(websocket: WebSocket):
     WebSocket endpoint for real-time agent communication.
     
     Protocol:
-    - Client sends: {"type": "init", "project_path": "..."}
+    - Client sends: {"type": "init", "project_path": "...", "author_mode": "fiction"}
     - Client sends: {"type": "message", "content": "...", "thread_id": "..."}
+    - Client sends: {"type": "change_mode", "mode": "non-fiction"}
     - Server sends: {"type": "stream-chunk", "content": "..."}
     - Server sends: {"type": "todos", "data": [...]}
     - Server sends: {"type": "complete"}
+    - Server sends: {"type": "mode_changed", "mode": "..."}
     - Server sends: {"type": "error", "error": "..."}
     """
     await websocket.accept()
@@ -115,6 +117,8 @@ async def websocket_endpoint(websocket: WebSocket):
             # Handle initialization
             if message_type == "init":
                 project_path = data.get("project_path")
+                author_mode = data.get("author_mode", "fiction")  # Default to fiction mode
+                
                 if not project_path:
                     await websocket.send_json({
                         "type": "error",
@@ -122,14 +126,16 @@ async def websocket_endpoint(websocket: WebSocket):
                     })
                     continue
                 
-                # Create agent service
+                # Create agent service with mode
                 try:
-                    agent_service = AgentService(project_path)
+                    agent_service = AgentService(project_path, author_mode=author_mode)
                     await websocket.send_json({
                         "type": "initialized",
-                        "project_path": project_path
+                        "project_path": project_path,
+                        "author_mode": author_mode
                     })
                     print(f"   Agent initialized for: {project_path}")
+                    print(f"   Author mode: {author_mode}")
                 except Exception as e:
                     await websocket.send_json({
                         "type": "error",
@@ -199,6 +205,55 @@ async def websocket_endpoint(websocket: WebSocket):
                         "type": "error",
                         "error": f"Failed to change project: {str(e)}"
                     })
+            
+            # Handle mode change
+            elif message_type == "change_mode":
+                if not agent_service:
+                    await websocket.send_json({
+                        "type": "error",
+                        "error": "Agent not initialized"
+                    })
+                    continue
+                
+                new_mode = data.get("mode")
+                if not new_mode:
+                    await websocket.send_json({
+                        "type": "error",
+                        "error": "mode is required"
+                    })
+                    continue
+                
+                try:
+                    agent_service.change_mode(new_mode)
+                    await websocket.send_json({
+                        "type": "mode_changed",
+                        "mode": new_mode
+                    })
+                    print(f"   Author mode changed to: {new_mode}")
+                except ValueError as e:
+                    await websocket.send_json({
+                        "type": "error",
+                        "error": str(e)
+                    })
+                except Exception as e:
+                    await websocket.send_json({
+                        "type": "error",
+                        "error": f"Failed to change mode: {str(e)}"
+                    })
+            
+            # Get current mode
+            elif message_type == "get_mode":
+                if not agent_service:
+                    await websocket.send_json({
+                        "type": "error",
+                        "error": "Agent not initialized"
+                    })
+                    continue
+                
+                await websocket.send_json({
+                    "type": "current_mode",
+                    "mode": agent_service.get_current_mode()
+                })
             
             else:
                 await websocket.send_json({

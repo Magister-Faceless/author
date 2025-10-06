@@ -26,6 +26,7 @@ interface ElectronAPI {
     listAvailable: () => Promise<any>;
     getStatus: (agentId: string) => Promise<any>;
     executeTask: (task: any) => Promise<any>;
+    changeMode: (mode: string) => Promise<any>;
   };
   thread: {
     create: (projectId: string, name?: string) => Promise<any>;
@@ -107,6 +108,7 @@ const electronAPI: ElectronAPI = {
     listAvailable: () => ipcRenderer.invoke(IPC_CHANNELS.AGENT_LIST_AVAILABLE),
     getStatus: (agentId: string) => ipcRenderer.invoke(IPC_CHANNELS.AGENT_GET_STATUS, agentId),
     executeTask: (task: any) => ipcRenderer.invoke(IPC_CHANNELS.AGENT_EXECUTE_TASK, task),
+    changeMode: (mode: string) => ipcRenderer.invoke('agent:change-mode', mode),
   },
 
   // Thread/Session Management

@@ -23,6 +23,31 @@ export const ChatPanel: React.FC = () => {
 
   const activeThread = getActiveThread();
 
+  // Load threads from backend when project changes
+  useEffect(() => {
+    const loadThreadsFromBackend = async () => {
+      if (currentProject?.id) {
+        try {
+          const result = await (window as any).electronAPI.thread.list(currentProject.id);
+          const backendThreads = result?.data || result || [];
+          
+          console.log('Loaded threads from backend:', backendThreads);
+          
+          // Update local store with backend threads
+          // Note: This is a simple sync - in production, you'd want more sophisticated merging
+          if (backendThreads.length > 0) {
+            // TODO: Sync with local threads instead of just logging
+            console.log('Found', backendThreads.length, 'threads in backend');
+          }
+        } catch (error) {
+          console.error('Failed to load threads from backend:', error);
+        }
+      }
+    };
+    
+    loadThreadsFromBackend();
+  }, [currentProject?.id]);
+
   useEffect(() => {
     console.log('ChatPanel mounted');
     console.log('electronAPI available:', !!(window as any).electronAPI);
@@ -219,14 +244,30 @@ export const ChatPanel: React.FC = () => {
     if (!threadId) return;
     
     try {
-      // Load thread messages
-      const messages = await (window as any).electronAPI.thread.getMessages(threadId);
+      // Load thread messages from backend
+      const result = await (window as any).electronAPI.thread.getMessages(threadId);
+      const messages = result?.data || result || [];
       
-      // Update store
+      console.log('Loaded thread messages:', messages);
+      
+      // Update store with the thread ID
       setActiveThread(threadId);
       
-      // TODO: Populate messages into the thread
-      console.log('Loaded thread messages:', messages);
+      // Clear current messages and add loaded ones
+      const activeThread = getActiveThread();
+      if (activeThread) {
+        // Clear existing messages
+        activeThread.messages = [];
+        
+        // Add loaded messages
+        messages.forEach((msg: any) => {
+          addMessageToThread(threadId, {
+            type: msg.type,
+            content: msg.content,
+            timestamp: msg.timestamp
+          });
+        });
+      }
     } catch (error) {
       console.error('Failed to load thread:', error);
     }
@@ -256,21 +297,6 @@ export const ChatPanel: React.FC = () => {
           onThreadSelect={handleThreadSelect}
           onNewThread={handleNewThread}
         />
-      </div>
-
-      {/* Messages Display */}
-      <div style={{
-        flex: 1,
-        overflowY: 'auto',
-        padding: '16px',
-        backgroundColor: '#1e1e1e'
-      }}>
-        {/* Placeholder for messages rendering - will be shown from active thread */}
-        {activeThread && activeThread.messages.length === 0 && (
-          <div style={{ textAlign: 'center', color: '#666', padding: '40px' }}>
-            Start a conversation...
-          </div>
-        )}
       </div>
 
       {/* Messages */}

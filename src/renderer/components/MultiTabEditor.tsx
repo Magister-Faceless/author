@@ -1,6 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../store/app-store';
 
+// Author Mode definitions
+const AUTHOR_MODES = [
+  { 
+    id: 'fiction', 
+    name: 'Fiction Writing', 
+    icon: '📖',
+    description: 'Novels, short stories, creative writing'
+  },
+  { 
+    id: 'non-fiction', 
+    name: 'Non-Fiction', 
+    icon: '📚',
+    description: 'Memoirs, biographies, self-help, business books'
+  },
+  { 
+    id: 'academic', 
+    name: 'Academic/Scholarly', 
+    icon: '🎓',
+    description: 'Textbooks, research-based books, academic publications'
+  },
+] as const;
+
 export const MultiTabEditor: React.FC = () => {
   const {
     openTabs,
@@ -8,30 +30,26 @@ export const MultiTabEditor: React.FC = () => {
     closeTab,
     updateTabContent,
     markTabDirty,
-    getActiveTab
+    getActiveTab,
+    authorMode,
+    setAuthorMode
   } = useAppStore();
 
   const activeTab = getActiveTab();
   const [localContent, setLocalContent] = useState('');
-  const [agents, setAgents] = useState<any[]>([]);
-  const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
-
-  useEffect(() => {
-    const loadAgents = async () => {
-      try {
-        const result = await (window as any).electronAPI.agent.listAvailable();
-        if (result && result.success && result.data) {
-          setAgents(result.data);
-          if (result.data.length > 0 && !selectedAgent) {
-            setSelectedAgent(result.data[0].id);
-          }
-        }
-      } catch (error) {
-        console.error('Error loading agents:', error);
+  
+  const handleModeChange = async (newMode: typeof authorMode) => {
+    try {
+      setAuthorMode(newMode);
+      // Notify backend about mode change via electronAPI
+      if ((window as any).electronAPI?.agent?.changeMode) {
+        await (window as any).electronAPI.agent.changeMode(newMode);
+        console.log(`Author mode changed to: ${newMode}`);
       }
-    };
-    loadAgents();
-  }, []);
+    } catch (error) {
+      console.error('Error changing author mode:', error);
+    }
+  };
 
   useEffect(() => {
     if (activeTab) {
@@ -93,7 +111,7 @@ export const MultiTabEditor: React.FC = () => {
       color: '#cccccc',
       fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif"
     }}>
-      {/* Header with Agent Selector - Matches screenshot */}
+      {/* Header with Author Mode Selector */}
       <div style={{
         display: 'flex',
         justifyContent: 'center',
@@ -104,8 +122,8 @@ export const MultiTabEditor: React.FC = () => {
         height: '40px'
       }}>
         <select
-          value={selectedAgent || ''}
-          onChange={(e) => setSelectedAgent(e.target.value)}
+          value={authorMode}
+          onChange={(e) => handleModeChange(e.target.value as typeof authorMode)}
           style={{
             padding: '4px 8px',
             backgroundColor: '#2a2a2a',
@@ -113,14 +131,14 @@ export const MultiTabEditor: React.FC = () => {
             borderRadius: '3px',
             color: '#cccccc',
             fontSize: '13px',
-            minWidth: '180px',
+            minWidth: '220px',
             cursor: 'pointer'
           }}
+          title={AUTHOR_MODES.find(m => m.id === authorMode)?.description}
         >
-          <option value="">Select agent...</option>
-          {agents.map(agent => (
-            <option key={agent.id} value={agent.id}>
-              {agent.name}
+          {AUTHOR_MODES.map(mode => (
+            <option key={mode.id} value={mode.id}>
+              {mode.icon} {mode.name}
             </option>
           ))}
         </select>

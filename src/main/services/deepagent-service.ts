@@ -81,9 +81,9 @@ export class DeepAgentService extends EventEmitter {
   }
 
   /**
-   * Initialize agent with project path
+   * Initialize agent with project path and optionalauthor mode
    */
-  async initialize(projectPath: string): Promise<void> {
+  async initialize(projectPath: string, authorMode: string = 'fiction'): Promise<void> {
     if (!this.isConnected) {
       throw new Error('Not connected to backend');
     }
@@ -100,6 +100,7 @@ export class DeepAgentService extends EventEmitter {
           clearTimeout(timeout);
           this.isInitialized = true;
           console.log('✅ Agent initialized for project:', projectPath);
+          console.log('   Author mode:', authorMode);
           this.removeListener('message-raw', initHandler);
           resolve();
         } else if (message.type === 'error') {
@@ -114,6 +115,7 @@ export class DeepAgentService extends EventEmitter {
       this.send({
         type: 'init',
         project_path: projectPath,
+        author_mode: authorMode,
       });
     });
   }
@@ -170,6 +172,41 @@ export class DeepAgentService extends EventEmitter {
       this.send({
         type: 'change_project',
         project_path: projectPath,
+      });
+    });
+  }
+
+  /**
+   * Change author mode (Fiction, Non-Fiction, Academic)
+   */
+  async changeMode(mode: string): Promise<void> {
+    if (!this.isConnected) {
+      throw new Error('Not connected to backend');
+    }
+
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('Mode change timeout'));
+      }, 10000);
+
+      const modeHandler = (message: DeepAgentMessage) => {
+        if (message.type === 'mode_changed') {
+          clearTimeout(timeout);
+          console.log('✅ Author mode changed to:', mode);
+          this.removeListener('message-raw', modeHandler);
+          resolve();
+        } else if (message.type === 'error') {
+          clearTimeout(timeout);
+          this.removeListener('message-raw', modeHandler);
+          reject(new Error(message.error || 'Mode change failed'));
+        }
+      };
+
+      this.on('message-raw', modeHandler);
+
+      this.send({
+        type: 'change_mode',
+        mode: mode,
       });
     });
   }

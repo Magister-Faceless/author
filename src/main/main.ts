@@ -167,6 +167,10 @@ class AuthorApplication {
       return this.handleIpcRequest(() => this.agentManager.interrupt());
     });
 
+    ipcMain.handle('agent:change-mode', async (_, mode) => {
+      return this.handleIpcRequest(() => this.agentManager.changeMode(mode));
+    });
+
     // Thread/Session Management
     ipcMain.handle(IPC_CHANNELS.THREAD_CREATE, async (_, projectId, name) => {
       return this.handleIpcRequest(() => this.agentManager.createThread(projectId, name));
