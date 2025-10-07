@@ -107,105 +107,111 @@ export const MultiTabEditor: React.FC = () => {
       display: 'flex',
       flexDirection: 'column',
       height: '100%',
-      backgroundColor: '#1e1e1e',
+      backgroundColor: '#252526',
       color: '#cccccc',
       fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif"
     }}>
-      {/* Header with Author Mode Selector */}
+      {/* Header with Mode Selector and Tab Bar */}
       <div style={{
         display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        padding: '4px 16px',
-        backgroundColor: '#252526',
-        borderBottom: '1px solid #3a3a3a',
-        height: '40px'
-      }}>
-        <select
-          value={authorMode}
-          onChange={(e) => handleModeChange(e.target.value as typeof authorMode)}
-          style={{
-            padding: '4px 8px',
-            backgroundColor: '#2a2a2a',
-            border: '1px solid #3a3a3a',
-            borderRadius: '3px',
-            color: '#cccccc',
-            fontSize: '13px',
-            minWidth: '220px',
-            cursor: 'pointer'
-          }}
-          title={AUTHOR_MODES.find(m => m.id === authorMode)?.description}
-        >
-          {AUTHOR_MODES.map(mode => (
-            <option key={mode.id} value={mode.id}>
-              {mode.icon} {mode.name}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* Tab Bar */}
-      <div style={{
-        display: 'flex',
-        backgroundColor: '#252526',
-        borderBottom: '1px solid #3a3a3a',
-        overflowX: 'auto',
+        flexDirection: 'column',
+        backgroundColor: '#2d2d30',
+        borderBottom: '1px solid #3c3c3c',
         flexShrink: 0
       }}>
-        {openTabs.length === 0 ? (
-          <div style={{
-            padding: '8px 16px',
-            fontSize: '13px',
-            color: '#888'
-          }}>
-            No files open
-          </div>
-        ) : (
-          openTabs.map(tab => (
-            <div
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                padding: '8px 12px',
-                backgroundColor: tab.isActive ? '#1e1e1e' : 'transparent',
-                borderRight: '1px solid #3a3a3a',
-                borderTop: tab.isActive ? '2px solid #4a9eff' : '2px solid transparent',
-                cursor: 'pointer',
-                fontSize: '13px',
-                whiteSpace: 'nowrap',
-                transition: 'background-color 0.1s'
-              }}
-              onMouseEnter={(e) => {
-                if (!tab.isActive) e.currentTarget.style.backgroundColor = '#2a2a2a';
-              }}
-              onMouseLeave={(e) => {
-                if (!tab.isActive) e.currentTarget.style.backgroundColor = 'transparent';
-              }}
-            >
-              <span style={{ marginRight: '8px' }}>
-                {tab.isDirty ? '● ' : ''}{tab.fileName}
-              </span>
-              <button
-                onClick={(e) => handleCloseTab(e, tab.id)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: '#888',
-                  cursor: 'pointer',
-                  padding: '0 4px',
-                  fontSize: '16px',
-                  lineHeight: 1
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.color = '#cccccc'}
-                onMouseLeave={(e) => e.currentTarget.style.color = '#888'}
-              >
-                ×
-              </button>
+        {/* Mode Selector */}
+        <div style={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: '10px 16px',
+          borderBottom: '1px solid #3c3c3c'
+        }}>
+          <select
+            value={authorMode}
+            onChange={(e) => handleModeChange(e.target.value as typeof authorMode)}
+            style={{
+              padding: '6px 12px',
+              backgroundColor: '#1e1e1e',
+              border: '1px solid #3c3c3c',
+              borderRadius: '4px',
+              color: '#cccccc',
+              fontSize: '13px',
+              minWidth: '220px',
+              cursor: 'pointer',
+              fontWeight: 500
+            }}
+            title={AUTHOR_MODES.find(m => m.id === authorMode)?.description}
+          >
+            {AUTHOR_MODES.map(mode => (
+              <option key={mode.id} value={mode.id}>
+                {mode.icon} {mode.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Tab Bar */}
+        <div style={{
+          display: 'flex',
+          backgroundColor: '#252526',
+          overflowX: 'auto'
+        }}>
+          {openTabs.length === 0 ? (
+            <div style={{
+              padding: '8px 16px',
+              fontSize: '13px',
+              color: '#888'
+            }}>
+              No files open
             </div>
-          ))
-        )}
+          ) : (
+            openTabs.map(tab => (
+              <div
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: '8px 12px',
+                  backgroundColor: tab.isActive ? '#1e1e1e' : 'transparent',
+                  borderRight: '1px solid #3a3a3a',
+                  borderTop: tab.isActive ? '2px solid #4a9eff' : '2px solid transparent',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  whiteSpace: 'nowrap',
+                  transition: 'background-color 0.1s'
+                }}
+                onMouseEnter={(e) => {
+                  if (!tab.isActive) e.currentTarget.style.backgroundColor = '#2a2a2a';
+                }}
+                onMouseLeave={(e) => {
+                  if (!tab.isActive) e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+              >
+                <span style={{ marginRight: '8px' }}>
+                  {tab.isDirty ? '● ' : ''}{tab.fileName}
+                </span>
+                <button
+                  onClick={(e) => handleCloseTab(e, tab.id)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#888',
+                    cursor: 'pointer',
+                    padding: '0 4px',
+                    fontSize: '16px',
+                    lineHeight: 1
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.color = '#cccccc'}
+                  onMouseLeave={(e) => e.currentTarget.style.color = '#888'}
+                >
+                  ×
+                </button>
+              </div>
+            ))
+          )}
+        </div>
       </div>
 
       {/* Editor Area */}

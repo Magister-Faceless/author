@@ -297,23 +297,23 @@ export const FileExplorer: React.FC = () => {
   return (
     <div style={{
       height: '100%',
+      display: 'flex',
+      flexDirection: 'column',
       backgroundColor: '#252526',
       color: '#cccccc',
-      overflow: 'auto',
       fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif"
     }}>
-      {/* Header - Matches screenshot */}
+      {/* Header */}
       <div style={{
-        padding: '4px 12px',
-        backgroundColor: '#252526',
-        borderBottom: '1px solid #3a3a3a',
-        fontSize: '11px',
+        padding: '12px 16px',
+        backgroundColor: '#2d2d30',
+        borderBottom: '1px solid #3c3c3c',
+        fontSize: '12px',
         fontWeight: 600,
         textTransform: 'uppercase',
-        color: '#888',
-        height: '40px',
-        display: 'flex',
-        alignItems: 'center'
+        color: '#999',
+        letterSpacing: '0.5px',
+        flexShrink: 0
       }}>
         EXPLORER
       </div>
@@ -397,7 +397,11 @@ export const FileExplorer: React.FC = () => {
       )}
 
       {/* File Tree */}
-      <div style={{ padding: '4px 0' }}>
+      <div style={{ 
+        padding: '4px 0',
+        flex: 1,
+        overflowY: 'auto'
+      }}>
         {fileTree.length === 0 ? (
           <div style={{
             padding: '20px',

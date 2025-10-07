@@ -20,6 +20,8 @@ export const ChatPanel: React.FC = () => {
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
   const [justFinishedStreaming, setJustFinishedStreaming] = useState(false);
   const [toolCalls, setToolCalls] = useState<Array<{id: string, tool: string, args: any, status: string, result?: string}>>([]);
+  const [inputHeight, setInputHeight] = useState(100);
+  const [isResizingInput, setIsResizingInput] = useState(false);
 
   const activeThread = getActiveThread();
 
@@ -59,6 +61,34 @@ export const ChatPanel: React.FC = () => {
       createThread('General Chat');
     }
   }, []);
+
+  // Handle input area resizing
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (isResizingInput) {
+        const newHeight = window.innerHeight - e.clientY;
+        if (newHeight >= 80 && newHeight <= 400) {
+          setInputHeight(newHeight);
+        }
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsResizingInput(false);
+    };
+
+    if (isResizingInput) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      
+      return () => {
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+      };
+    }
+    
+    return undefined;
+  }, [isResizingInput]);
 
   // Handle adding pending message to thread (avoids setState during render)
   useEffect(() => {
@@ -278,18 +308,19 @@ export const ChatPanel: React.FC = () => {
       display: 'flex',
       flexDirection: 'column',
       height: '100%',
-      backgroundColor: '#1e1e1e',
+      backgroundColor: '#252526',
       color: '#cccccc',
-      fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif"
+      fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
+      userSelect: isResizingInput ? 'none' : 'auto'
     }}>
-      {/* Thread Selector - Matches screenshot header height */}
+      {/* Thread Selector Header */}
       <div style={{
-        padding: '4px 16px',
-        borderBottom: '1px solid #3a3a3a',
-        backgroundColor: '#252526',
-        height: '40px',
+        padding: '10px 16px',
+        borderBottom: '1px solid #3c3c3c',
+        backgroundColor: '#2d2d30',
         display: 'flex',
-        alignItems: 'center'
+        alignItems: 'center',
+        flexShrink: 0
       }}>
         <ThreadSelector
           currentThreadId={activeThreadId}
@@ -498,13 +529,57 @@ export const ChatPanel: React.FC = () => {
         )}
       </div>
 
-      {/* Input */}
+      {/* Input Area with Resize Handle */}
       <div style={{
-        padding: '16px',
-        borderTop: '1px solid #3a3a3a',
-        backgroundColor: '#252526'
+        height: `${inputHeight}px`,
+        position: 'relative',
+        flexShrink: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        borderTop: '1px solid #3c3c3c',
+        backgroundColor: '#2d2d30'
       }}>
-        <div style={{ display: 'flex', gap: '8px' }}>
+        {/* Resize Handle */}
+        <div
+          onMouseDown={() => setIsResizingInput(true)}
+          style={{
+            height: '8px',
+            cursor: 'ns-resize',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: isResizingInput ? '#3c3c3c' : 'transparent',
+            transition: 'background-color 0.2s'
+          }}
+          onMouseEnter={(e) => {
+            if (!isResizingInput) {
+              e.currentTarget.style.backgroundColor = '#3c3c3c';
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (!isResizingInput) {
+              e.currentTarget.style.backgroundColor = 'transparent';
+            }
+          }}
+        >
+          <div
+            style={{
+              width: '40px',
+              height: '3px',
+              backgroundColor: isResizingInput ? '#4a9eff' : '#555',
+              borderRadius: '2px',
+              transition: 'background-color 0.2s'
+            }}
+          />
+        </div>
+        
+        {/* Input Content */}
+        <div style={{
+          flex: 1,
+          padding: '12px 16px',
+          display: 'flex',
+          gap: '8px'
+        }}>
           <textarea
             value={message}
             onChange={(e) => setMessage(e.target.value)}
@@ -514,33 +589,35 @@ export const ChatPanel: React.FC = () => {
                 handleSendMessage();
               }
             }}
-            placeholder="Ask anything... (Ctrl+Enter to send)"
+            placeholder="Ask anything... (Enter to send, Shift+Enter for new line)"
             disabled={isProcessing}
-            rows={3}
             style={{
               flex: 1,
-              padding: '8px',
+              padding: '10px',
               backgroundColor: '#1e1e1e',
-              border: '1px solid #3a3a3a',
-              borderRadius: '4px',
+              border: '1px solid #3c3c3c',
+              borderRadius: '6px',
               color: '#cccccc',
               fontSize: '13px',
               resize: 'none',
-              fontFamily: 'inherit'
+              fontFamily: 'inherit',
+              lineHeight: '1.5'
             }}
           />
           <button
             onClick={handleSendMessage}
             disabled={!message.trim() || isProcessing}
             style={{
-              padding: '8px 16px',
+              padding: '10px 20px',
               backgroundColor: isProcessing || !message.trim() ? '#3a3a3a' : '#4a9eff',
               border: 'none',
-              borderRadius: '4px',
+              borderRadius: '6px',
               color: '#ffffff',
               cursor: isProcessing || !message.trim() ? 'not-allowed' : 'pointer',
               fontSize: '13px',
-              fontWeight: 'bold'
+              fontWeight: 600,
+              alignSelf: 'flex-end',
+              transition: 'background-color 0.2s'
             }}
           >
             {isProcessing ? '...' : 'Send'}
